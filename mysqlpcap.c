@@ -83,6 +83,7 @@ int main (int argc, char **argv)
                     "\t -z show source ip\n"
                     "\t -u focus user, sperated by comma, default null, example: user1,user2, conflict with -n \n"
                     "\t -n filter user, format same as above but conflict with -u\n"
+                    "\t -s server address when run in client side.\n"
                     "\t -h help";
 
     MysqlPcap *mp = calloc(1, sizeof(*mp));
@@ -90,7 +91,7 @@ int main (int argc, char **argv)
     if (NULL == mp) return ERR;
 
     char ch;
-    while (-1 != (ch = getopt(argc, argv, "p:df:c:k:i:l:hzu:n:"))) {
+    while (-1 != (ch = getopt(argc, argv, "p:df:c:k:i:l:hzu:n:s:"))) {
         switch (ch) {
             case 'p' :
                 mp->mysqlPort = atoi(optarg);
@@ -135,6 +136,11 @@ int main (int argc, char **argv)
                 mp->filterUser = listCreate();
                 initUserList(mp->filterUser, optarg);
                 break; 
+            case 's' :
+                // maybe, it's good idea to check ip is valid.
+                mp->server = strdup(optarg); 
+                break;
+
             case 'h' :
             default :
                 printf("%s", usage);

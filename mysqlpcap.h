@@ -27,6 +27,7 @@ struct _MysqlPcap {
     pthread_mutex_t aux_mutex;
     pthread_t       aux_thread_id;
     char        *address;           /* user input */
+    char        *server;
     void        *al;                /* address list */
     void        *new_al;            /* new list, lock then switch*/
 
