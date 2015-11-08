@@ -30,6 +30,10 @@ mysqlpcap 是一个基于 pcap 用于观察 sql 语句执行情况的工具。�
 ## 针对某个port的sql抓取
 	sudo ./mysqlpcap -p 3001
 
+## 运行在客户端抓取
+
+    sudo ./mysqlpcap -l 1.1.1.1 -s 2.2.2.2
+
 ##output format
 
 	timestamp           sql                                     latency(us)     rows            
@@ -87,6 +91,7 @@ sql 在前面，方括号里为具体的值。
 * support use signal SIGUSR1 inquire drop percentage 
 * support reload machine address 
 * support delete idle connection 
+* support client mode
 
 ##version
 0.01

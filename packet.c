@@ -104,7 +104,7 @@ start_packet(MysqlPcap *mp) {
     ASSERT(ret >= 0);
 
     snprintf(mp->filter, sizeof(mp->filter),
-        "tcp port %d and tcp[tcpflags] & (tcp-push|tcp-ack|tcp-fin) != 0", mp->mysqlPort);
+        "tcp port %d and tcp[tcpflags] & (tcp-push|tcp-ack|tcp-fin) != 0 and host %s", mp->mysqlPort, mp->server);
 
     if (pcap_compile(mp->pd, &fcode, mp->filter, 0, mp->netmask) < 0) {
         dump(L_ERR, "pcap_compile failed: %s", pcap_geterr(mp->pd));
@@ -265,6 +265,7 @@ process_ip(MysqlPcap *mp, const struct ip *ip, struct timeval tv) {
     char src[16], dst[16], *addr = NULL;
     char incoming;
     uint32 len;
+    int check_port;
 
     addr = inet_ntoa(ip->ip_src);
     strncpy(src, addr, 15);
@@ -329,14 +330,27 @@ process_ip(MysqlPcap *mp, const struct ip *ip, struct timeval tv) {
 
         if (incoming == '1') {
             /* ignore remote MySQL port connect locate random port */
-            if ((dport != mp->mysqlPort))
+            check_port = mp->server ? sport : dport;
+            if ((check_port != mp->mysqlPort))
                 break;
-            inbound(mp, data, datalen, dport, sport, ip->ip_dst.s_addr, ip->ip_src.s_addr, tv, tcp);
+            if (mp->server) {
+                // For client mode, src is remote server, dst is local. 
+                outbound(mp, data, datalen, sport, dport, ip->ip_src.s_addr, ip->ip_dst.s_addr, tv, tcp, src);
+            } else {
+                inbound(mp, data, datalen, dport, sport, ip->ip_dst.s_addr, ip->ip_src.s_addr, tv, tcp);
+            }
         } else {
             /* ignore locate random port connect remote MySQL port */
-            if (sport != mp->mysqlPort)
+            check_port = mp->server ? dport: sport;
+            if (check_port != mp->mysqlPort)
                 break;
-            outbound(mp, data, datalen, dport, sport, ip->ip_dst.s_addr, ip->ip_src.s_addr, tv, tcp, dst);
+
+            if (mp->server) {
+                // For client mode, src is remote server, dst is local. 
+                inbound(mp, data, datalen, sport, dport, ip->ip_src.s_addr, ip->ip_dst.s_addr, tv, tcp);
+            } else {
+                outbound(mp, data, datalen, dport, sport, ip->ip_dst.s_addr, ip->ip_src.s_addr, tv, tcp, dst);
+            }
         }
         mp->is_in = incoming;
         mp->datalen = datalen;
