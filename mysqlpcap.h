@@ -54,4 +54,5 @@ struct _MysqlPcap {
     time_t      cacheFlushTime;
 };
 
+extern int is_stop;
 #endif

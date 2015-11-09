@@ -25,6 +25,7 @@ typedef struct _Log_t {
 } Log;
 
 Log G_log;
+static int is_log_init = 0;
 
 /* G_log.format is not NULL, will go to this function */
 void log_change_filename(time_t t) {
@@ -68,6 +69,9 @@ log_init(const char *prefix, const char *format, const char *suffix, int level) 
         return;
     }
 
+    if(is_log_init) return;
+
+    is_log_init = 1;
     struct sigaction act;
     act.sa_handler = log_change_level;
     act.sa_flags = SA_RESTART;
@@ -78,7 +82,6 @@ log_init(const char *prefix, const char *format, const char *suffix, int level) 
     G_log.level = level;
     G_log.syslog_enabled = 0;
 
-    G_log.filename = malloc(LOG_FILE_LEN);
     G_log.prefix = malloc(PREFIX_LEN);
     G_log.suffix = malloc(PREFIX_LEN);
     G_log.filename = malloc(LOG_FILE_LEN);
@@ -97,6 +100,21 @@ log_init(const char *prefix, const char *format, const char *suffix, int level) 
         G_log.format = NULL;
         snprintf(G_log.filename, LOG_FILE_LEN, "%s%s", 
             G_log.prefix, G_log.suffix);
+    }
+}
+
+void
+log_destroy() {
+    if(!is_log_init) return;
+
+    free(G_log.prefix);
+    free(G_log.suffix);
+    free(G_log.old_time_format);
+    free(G_log.new_time_format);
+    free(G_log.filename);
+
+    if(G_log.format) {
+        free(G_log.format);
     }
 }
 

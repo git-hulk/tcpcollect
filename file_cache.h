@@ -1,5 +1,6 @@
 
 int fileCacheInit(MysqlPcap *mp);
+void fileCacheDestroy(MysqlPcap *mp);
 
 int fileCacheAdd(MysqlPcap *mp, const char *fmt, ...);
 

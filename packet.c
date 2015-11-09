@@ -34,8 +34,9 @@
 /* each interval, will reload current ip address */
 #define RELOAD_ADDRESS_INTERVAL 3600
 /* poll wait time ms */
-#define PCAP_POLL_TIMEOUT 3000
+#define PCAP_POLL_TIMEOUT 500
 
+int is_stop;
 void process_packet(unsigned char *user, const struct pcap_pkthdr *header,
     const unsigned char *packet);
 int process_ip(MysqlPcap *mp, const struct ip *ip, struct timeval tv);
@@ -140,7 +141,7 @@ start_packet(MysqlPcap *mp) {
         mp->flushCache(mp, 1);
     }
 
-    while(1) {
+    while(!is_stop) {
         ret = pcap_dispatch(mp->pd, -1, process_packet, (u_char*)mp);
         ASSERT((ret >= 0) || (ret == -10));
 

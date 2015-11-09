@@ -41,6 +41,11 @@ int fileCacheInit(MysqlPcap *mp) {
     mp->cacheFlushTime = time(NULL);
     return OK;
 }
+void fileCacheDestroy(MysqlPcap *mp) {
+    FileCache *fc = mp->config;
+    free(fc->cache);
+    free(fc);
+}
 
 int fileCacheAdd(MysqlPcap *mp, const char *fmt, ...) {
     ASSERT(mp);

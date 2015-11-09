@@ -19,6 +19,7 @@
 #define L_DEBUG 7 
 
 void log_init(const char *prefix, const char *format, const char *suffix, int level);
+void log_destroy(void);
 
 #define dump(x,y...)    _log(#x, x, ##y)
 

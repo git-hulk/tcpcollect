@@ -16,9 +16,11 @@
 #include <string.h>
 
 #include "utils.h"
+#include "mysqlpcap.h"
 #include "log.h"
 #include "stat.h"
 
+int is_stop;
 void _Assert (char* name, char* strFile, unsigned uLine) 
 {           
     dump(L_ERR, "Assertion failed: %s, %s, line %u", name, strFile, uLine);
@@ -97,6 +99,17 @@ select_sleep(unsigned int second)
     }
 }
 
+static void sig_shutdown_handler(int sig) {
+    switch (sig) {
+        case SIGINT:
+        case SIGTERM:
+            is_stop = 1;
+            break;
+        default:
+            break;
+    }
+}
+
 void sig_init(void)
 {
     /*
@@ -107,6 +120,7 @@ void sig_init(void)
      *          SIGALRM
     */
     sigset_t intmask;
+    struct sigaction act;
 
     sigemptyset(&intmask);
     sigaddset(&intmask,SIGTERM);
@@ -124,4 +138,10 @@ void sig_init(void)
     sigaddset(&act2.sa_mask, SIGPIPE);
 
     sigaction(SIGPIPE, &act2, 0);
+
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0; 
+    act.sa_handler = sig_shutdown_handler;
+    sigaction(SIGTERM, &act, NULL);
+    sigaction(SIGINT, &act, NULL);
 }

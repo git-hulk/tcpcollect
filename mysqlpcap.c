@@ -65,6 +65,20 @@ int init(MysqlPcap *mp)
     return OK;
 }
 
+void destroy(MysqlPcap *mp) {
+    hash_clean(mp->hash);
+    free(mp->server);
+    if (mp->address) {
+        free(mp->address);
+    }
+    free_addresses(mp->al);
+    free(mp->al);
+   
+    log_destroy();
+    fileCacheDestroy(mp);
+    free(mp);
+}
+
 int main (int argc, char **argv) 
 {
     int ret;
@@ -158,14 +172,12 @@ int main (int argc, char **argv)
     }
 
     sig_init();
-
+    is_stop = 0;
     start_packet(mp);
 
-    hash_free(mp->hash);
-    free(mp->hash);
-    free(mp);
+    dump(L_OK, "mysqlcap exit...");
 
-    dump(L_ERR, "exit0");
+    destroy(mp);
     return OK;
 }
 
