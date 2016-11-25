@@ -119,7 +119,7 @@ void sig_init(void)
     struct sigaction act2;
 
     act2.sa_handler = sig_pipe_handler;
-    act2.sa_flags = SA_INTERRUPT;
+    //act2.sa_flags = SA_INTERRUPT;
     sigemptyset(&act2.sa_mask);
     sigaddset(&act2.sa_mask, SIGPIPE);
 

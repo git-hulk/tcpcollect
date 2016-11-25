@@ -293,22 +293,32 @@ process_ip(MysqlPcap *mp, const struct ip *ip, struct timeval tv) {
     case IPPROTO_TCP:
         tcp = (struct tcphdr *) ((uchar *) ip + sizeof(struct ip));
 
-#if defined(__FAVOR_BSD)
+
+        int off;
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
+        uint32_t tcp_seq = tcp->th_seq;
+        uint32_t tcp_ack = tcp->th_ack;
+        uint32_t tcp_fin = tcp->th_flags & TH_FIN;
+        uint32_t tcp_psh = tcp->th_flags & TH_PUSH;
         sport = ntohs(tcp->th_sport);
         dport = ntohs(tcp->th_dport);
-        datalen = len - sizeof(struct ip) - tcp->th_off * 4;    // 4 bits offset
+        off = tcp->th_off;
 #else
+        uint32_t tcp_seq = tcp->seq;
+        uint32_t tcp_ack = tcp->ack;
+        uint32_t tcp_fin = tcp->fin;
+        uint32_t tcp_push = tcp->psh;
         sport = ntohs(tcp->source);
         dport = ntohs(tcp->dest);
-        datalen = len - sizeof(struct ip) - tcp->doff * 4;
+        off = tcp->doff;
 #endif
         ASSERT((sport > 0) && (dport > 0));
-
         /*  sack datalen > 0 continue
             fin possible ack = 1 continue
             only filter pure ack packet
         */
-        if ((tcp->ack) && (datalen == 0) && (!tcp->fin)) {
+        datalen = len - sizeof(struct ip) - off * 4;
+        if ((tcp_ack) && (datalen == 0) && (!tcp_fin)) {
             dump(L_DEBUG, "skip a packet");
             break;
         }
@@ -323,10 +333,10 @@ process_ip(MysqlPcap *mp, const struct ip *ip, struct timeval tv) {
                 incoming = '0';
         }
 
-        char *data = (char*) ((uchar *) tcp + tcp->doff * 4);
-        dump(L_DEBUG, "is_in:%c-datalen:%d-tcp:%u [%u]-[%u] [%d-%d-%d]", incoming, datalen, ntohl(tcp->seq), dport,sport
-            ,tcp->psh, tcp->ack, tcp->fin);
-        addPacketInfo(incoming, datalen, ntohl(tcp->seq), dport,sport, data);
+        char *data = (char*) ((uchar *) tcp + off * 4);
+        dump(L_DEBUG, "is_in:%c-datalen:%d-tcp:%u [%u]-[%u] [%d-%d-%d]", incoming, datalen, ntohl(tcp_seq), dport,sport
+            ,tcp_psh, tcp_ack, tcp_fin);
+        addPacketInfo(incoming, datalen, ntohl(tcp_seq), dport,sport, data);
 
         if (incoming == '1') {
             /* ignore remote MySQL port connect locate random port */
@@ -354,7 +364,7 @@ process_ip(MysqlPcap *mp, const struct ip *ip, struct timeval tv) {
         }
         mp->is_in = incoming;
         mp->datalen = datalen;
-        mp->tcp_seq = tcp->seq;
+        mp->tcp_seq = tcp_seq;
 
         /* internal
          * receive auth, insert state = 1 (incoming = 1)
@@ -415,7 +425,12 @@ inbound(MysqlPcap *mp, char* data, uint32 datalen,
     lport = dport;
     rport = sport;
 
-    if ((tcp->fin) && (datalen == 0)) {
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
+    uint32_t tcp_fin = tcp->th_flags & TH_FIN;
+#else
+    uint32_t tcp_fin = tcp->fin;
+#endif
+    if ((tcp_fin) && (datalen == 0)) {
         dump(L_DEBUG, "fin");
         hash_get_rem(mp->hash, dst, src, lport, rport);
         return OK;
@@ -459,6 +474,11 @@ inbound(MysqlPcap *mp, char* data, uint32 datalen,
             }
         }
     }
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
+    uint32_t seq = tcp->th_seq;
+#else
+    uint32_t seq = tcp->seq;
+#endif
     /* omit repeat sql, validate sql */
     if (AfterOkPacket == status) {
         /* must 0x 0x 00 00 03 */
@@ -467,18 +487,18 @@ inbound(MysqlPcap *mp, char* data, uint32 datalen,
             /* no auth or sql */
             if (!(((data[2] == '\0') && (data[3] == '\1')) ||
                 ((data[2] == '\0') || (data[3] == '\0') || (data[4] < COM_END) || (data[4] >= COM_SLEEP)))) {
-                dump(L_ERR, "sql first chao order sql1 %u %u %u", *tcp_seq, datalen, ntohl(tcp->seq));
+                dump(L_ERR, "sql first chao order sql1 %u %u %u", *tcp_seq, datalen, ntohl(seq));
                 return ERR;
             }
-            *tcp_seq = ntohl(tcp->seq) + datalen;
+            *tcp_seq = ntohl(seq) + datalen;
             dump(L_DEBUG, "first receive sql1");
         } else {
-            if (*tcp_seq == ntohl(tcp->seq)) {
-                *tcp_seq = ntohl(tcp->seq) + datalen;
+            if (*tcp_seq == ntohl(seq)) {
+                *tcp_seq = ntohl(seq) + datalen;
                 dump(L_DEBUG, "sql continues %u", datalen);
             } else {
-                if (*tcp_seq > ntohl(tcp->seq)) {
-                    dump(L_DEBUG, "sql repeat %u %u %u", datalen, tcp_seq, ntohl(tcp->seq));
+                if (*tcp_seq > ntohl(seq)) {
+                    dump(L_DEBUG, "sql repeat %u %u %u", datalen, tcp_seq, ntohl(seq));
                     return ERR;
                 }
                 return ERR;
@@ -489,16 +509,16 @@ inbound(MysqlPcap *mp, char* data, uint32 datalen,
         if (*tcp_seq == 0) {
             /* omit chaos packet */
             if ((data[2] != '\0') || (data[3] != '\0') || (data[4] >= COM_END) || (data[4] < COM_QUIT)) {
-               dump(L_ERR, "sql first chao order sql2 %u %u", datalen, ntohl(tcp->seq));
+               dump(L_ERR, "sql first chao order sql2 %u %u", datalen, ntohl(seq));
                return ERR;
             }
-            *tcp_seq = ntohl(tcp->seq) + datalen;
+            *tcp_seq = ntohl(seq) + datalen;
             dump(L_DEBUG, "first receive sql2");
-        } else if (*tcp_seq == ntohl(tcp->seq)) {
-            *tcp_seq = ntohl(tcp->seq) + datalen;
+        } else if (*tcp_seq == ntohl(seq)) {
+            *tcp_seq = ntohl(seq) + datalen;
             dump(L_DEBUG, "sql continues %u", datalen);
-        } else if (*tcp_seq > ntohl(tcp->seq)) {
-                dump(L_DEBUG, "sql repeat %u %u %u", datalen, tcp_seq, ntohl(tcp->seq));
+        } else if (*tcp_seq > ntohl(seq)) {
+                dump(L_DEBUG, "sql repeat %u %u %u", datalen, tcp_seq, ntohl(seq));
                 return ERR;
         } else {
             /* expect 1, but receive 99, means what?
@@ -506,7 +526,7 @@ inbound(MysqlPcap *mp, char* data, uint32 datalen,
              2. tcp_seq overflow, possible still repeat packet
             */
             if (*tcp_seq < CAP_LEN) {
-                if (*tcp_seq == ntohl(tcp->seq) + datalen) {
+                if (*tcp_seq == ntohl(seq) + datalen) {
                     dump(L_DEBUG, "sql repeat packet overflow");
                 }
             }
@@ -772,7 +792,13 @@ outbound(MysqlPcap *mp, char *data, uint32 datalen,
     lport = sport;
     rport = dport;
 
-    if ((tcp->fin) && (datalen == 0)) {
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
+    uint32_t tcp_fin = tcp->th_flags & TH_FIN;
+#else
+    uint32_t tcp_fin = tcp->fin;
+#endif
+
+    if ((tcp_fin) && (datalen == 0)) {
         dump(L_DEBUG, "fin");
         hash_get_rem(mp->hash, src, dst, lport, rport);
         return OK;
@@ -814,6 +840,11 @@ outbound(MysqlPcap *mp, char *data, uint32 datalen,
         }
         return ERR;
     }
+#if defined(__FAVOR_BSD) || defined(__APPLE__)
+    uint32_t seq = tcp->th_seq;
+#else
+    uint32_t seq = tcp->seq;
+#endif
     if (status > 0) {
         if (*tcp_seq == 0) {
             if (likely((AfterSqlPacket == status) || (AfterOkPacket == status)
@@ -821,7 +852,7 @@ outbound(MysqlPcap *mp, char *data, uint32 datalen,
                 /* this is packet is resultset first packet */
                 /* 0x 0x 00 0x */
                 if (data[2] != '\0') {
-                    dump(L_ERR, "first packet is chao order %u %u %d", datalen, ntohl(tcp->seq), data[2]);
+                    dump(L_ERR, "first packet is chao order %u %u %d", datalen, ntohl(seq), data[2]);
                     return ERR;
                 }
                 if ((cmd < 0) || (!sql)) {
@@ -829,14 +860,14 @@ outbound(MysqlPcap *mp, char *data, uint32 datalen,
                     return ERR;
                 }
             }
-            *tcp_seq =ntohl(tcp->seq) + datalen;
+            *tcp_seq =ntohl(seq) + datalen;
             dump(L_DEBUG, "first receive packet");
         } else {
-            if (*tcp_seq == ntohl(tcp->seq)) {
-                *tcp_seq = ntohl(tcp->seq) + datalen;
+            if (*tcp_seq == ntohl(seq)) {
+                *tcp_seq = ntohl(seq) + datalen;
             } else {
                 /* expect 100, but receive 99, means repeat packet or old chao packet */
-                if (*tcp_seq > ntohl(tcp->seq)) {
+                if (*tcp_seq > ntohl(seq)) {
                     dump(L_DEBUG, "bond repeat packet");
                     return ERR;
                 } else {
@@ -845,14 +876,14 @@ outbound(MysqlPcap *mp, char *data, uint32 datalen,
                      2. tcp_seq overflow, possible still repeat packet
                     */
                     if (*tcp_seq < CAP_LEN) {
-                        if (*tcp_seq == ntohl(tcp->seq) + datalen) {
+                        if (*tcp_seq == ntohl(seq) + datalen) {
                             dump(L_DEBUG, "bond repeat packet overflow");
                             return ERR;
                         }
                     }
                 }
 
-                dump(L_DEBUG, " error packet expect %u but %u ", *tcp_seq , ntohl(tcp->seq));
+                dump(L_DEBUG, " error packet expect %u but %u ", *tcp_seq , ntohl(seq));
                 return ERR;
             }
         }
@@ -937,23 +968,23 @@ outbound(MysqlPcap *mp, char *data, uint32 datalen,
     } else if ((AfterAuthPacket == status) || (AfterAuthPwPacket == status)) {
         /* must auth ok or auth err, skip chao packet */
         if (datalen < 4) {
-            dump(L_ERR, "chao, no auth ok packet %u %u, too short", datalen, ntohl(tcp->seq));
+            dump(L_ERR, "chao, no auth ok packet %u %u, too short", datalen, ntohl(seq));
             return ERR;
         }
         uchar c = data[4];
         uchar c2 = data[3];
         if ((c2 != 0x02) || (datalen > 200)) {
-            dump(L_ERR, "chao, no auth ok packet1 %u %u %d", datalen, ntohl(tcp->seq), c);
+            dump(L_ERR, "chao, no auth ok packet1 %u %u %d", datalen, ntohl(seq), c);
             return ERR;
         }
         if (!((c == 0) || (c == 0xfe) || (c == 0xff))) {
-            dump(L_ERR, "chao, no auth ok packet %u %u %d", datalen, ntohl(tcp->seq), c);
+            dump(L_ERR, "chao, no auth ok packet %u %u %d", datalen, ntohl(seq), c);
             return ERR;
         }
         long state = parse_result(data, datalen, NULL, NULL, NULL, NULL);
         // only auth ok, not sql ok
         if ((state != ERR) && (state != OK) && (state != -3)) {
-            dump(L_ERR, "chao, no auth ok packet %u %u %ld", datalen, ntohl(tcp->seq), state);
+            dump(L_ERR, "chao, no auth ok packet %u %u %ld", datalen, ntohl(seq), state);
             return ERR;
         }
         ASSERT((state == ERR) || (state == OK) || (state == -3));

@@ -84,7 +84,7 @@ int main (int argc, char **argv)
                     "\t -u focus user, sperated by comma, default null, example: user1,user2, conflict with -n \n"
                     "\t -n filter user, format same as above but conflict with -u\n"
                     "\t -s server address when run in client side.\n"
-                    "\t -h help";
+                    "\t -h help\n";
 
     MysqlPcap *mp = calloc(1, sizeof(*mp));
 
