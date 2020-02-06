@@ -307,7 +307,7 @@ process_ip(MysqlPcap *mp, const struct ip *ip, struct timeval tv) {
         uint32_t tcp_seq = tcp->seq;
         uint32_t tcp_ack = tcp->ack;
         uint32_t tcp_fin = tcp->fin;
-        uint32_t tcp_push = tcp->psh;
+        uint32_t tcp_psh = tcp->psh;
         sport = ntohs(tcp->source);
         dport = ntohs(tcp->dest);
         off = tcp->doff;
